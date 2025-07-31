@@ -1,3 +1,4 @@
+// LineMeshManager.cs
 using System.Collections.Generic;
 using UnityEngine;
 using System.Linq; // For .OrderBy and .FirstOrDefault
@@ -75,8 +76,8 @@ public class MeshConfiguration
     public Component[] componentsToCopy;
 
     [Header("Generated Mesh Layer")]
-    [Tooltip("The name of the layer to assign to the newly generated mesh GameObject.")]
-    public string generatedMeshLayerName = "Default";
+    [Tooltip("The layer to assign to the newly generated mesh GameObject. Select from the dropdown.")]
+    public LayerMask generatedMeshLayer; // Changed from string to LayerMask
 
     // OnValidate for this serializable class (used by its parent MonoBehaviour's OnValidate)
     public void Validate()
@@ -455,7 +456,7 @@ public class LineMeshManager : MonoBehaviour
             return;
         }
 
-        List<Vector3> splinePoints = GenerateSplinePoints(true, config); // Pass config
+        List<Vector3> splinePoints = GenerateSplinePoints(true, config);
 
         lineRenderer.positionCount = splinePoints.Count;
         lineRenderer.SetPositions(splinePoints.ToArray());
@@ -466,7 +467,7 @@ public class LineMeshManager : MonoBehaviour
     /// </summary>
     /// <param name="closedLoop">If true, the spline will form a closed loop.</param>
     /// <returns>A list of Vector3 points representing the spline.</returns>
-    private List<Vector3> GenerateSplinePoints(bool closedLoop, MeshConfiguration config) // Added config parameter
+    private List<Vector3> GenerateSplinePoints(bool closedLoop, MeshConfiguration config)
     {
         List<Vector3> splinePoints = new List<Vector3>();
         if (controlPoints.Count < 2)
@@ -477,7 +478,7 @@ public class LineMeshManager : MonoBehaviour
 
         List<Vector3> tempPoints = new List<Vector3>(controlPoints);
 
-        if (config.curveType == CurveType.NoCurve) // Use config.curveType
+        if (config.curveType == CurveType.NoCurve)
         {
             splinePoints.AddRange(tempPoints);
             if (closedLoop && tempPoints.Count >= 2)
@@ -485,7 +486,7 @@ public class LineMeshManager : MonoBehaviour
                 splinePoints.Add(tempPoints[0]); // Close the loop with a straight line
             }
         }
-        else if (config.curveType == CurveType.CatmullRom) // Use config.curveType
+        else if (config.curveType == CurveType.CatmullRom)
         {
             // Catmull-Rom requires padding for closed loops or short point counts
             if (closedLoop && controlPoints.Count >= 3)
@@ -515,13 +516,13 @@ public class LineMeshManager : MonoBehaviour
 
             for (int i = 0; i < tempPoints.Count - 3; i++)
             {
-                for (int j = 0; j <= config.curveSegments; j++) // Use config.curveSegments
+                for (int j = 0; j <= config.curveSegments; j++)
                 {
                     float t = (float)j / config.curveSegments;
                     if (j == 0 && i > 0) continue; // Avoid duplicating points between segments
 
                     Vector3 interpolatedPoint = CalculateCatmullRom(tempPoints[i], tempPoints[i + 1], tempPoints[i + 2], tempPoints[i + 3], t);
-                    splinePoints.Add(ConformPointToGround(interpolatedPoint, config)); // Pass config
+                    splinePoints.Add(ConformPointToGround(interpolatedPoint, config));
                 }
             }
         }
@@ -551,20 +552,20 @@ public class LineMeshManager : MonoBehaviour
                 float segmentMinLength = Mathf.Min(incomingLen, outgoingLen);
 
                 // Ensure fillet points don't go past the previous/next control points
-                float actualFilletAmount = Mathf.Min(config.filletAmount, (segmentMinLength * 0.5f)); // Scale fillet by segment length
-                actualFilletAmount = Mathf.Clamp01(actualFilletAmount); // Ensure it's between 0 and 1
+                float actualFilletAmount = Mathf.Min(config.filletAmount, (segmentMinLength * 0.5f));
+                actualFilletAmount = Mathf.Clamp01(actualFilletAmount);
 
                 // Calculate the start and end points of the fillet curve
                 Vector3 filletStart = pCurrent - incomingVec * actualFilletAmount;
                 Vector3 filletEnd = pCurrent + outgoingVec * actualFilletAmount;
 
                 // Conform these temporary points to the ground
-                filletStart = ConformPointToGround(filletStart, config); // Pass config
-                filletEnd = ConformPointToGround(filletEnd, config); // Pass config
+                filletStart = ConformPointToGround(filletStart, config);
+                filletEnd = ConformPointToGround(filletEnd, config);
 
                 // Add straight line segment leading to the fillet
                 // If it's the first point of a closed loop, the previous straight segment comes from the end of the last fillet.
-                if (config.filletAmount > 0.001f) // Only add straight parts if there's an actual fillet
+                if (config.filletAmount > 0.001f)
                 {
                     // Add points for the straight line segment between the end of the *previous* fillet curve and the start of the *current* fillet curve.
                     // Or for the very first segment (open loop), from pPrev to filletStart.
@@ -574,7 +575,7 @@ public class LineMeshManager : MonoBehaviour
                     }
                     if (splinePoints.Any() && Vector3.Distance(splinePoints.Last(), filletStart) > 0.001f)
                     {
-                        int straightSegments = Mathf.Max(1, config.curveSegments); // Use config.curveSegments
+                        int straightSegments = Mathf.Max(1, config.curveSegments);
                         for (int j = 1; j <= straightSegments; j++) // Start from 1 as 0 is previous point
                         {
                             float t = (float)j / straightSegments;
@@ -590,20 +591,20 @@ public class LineMeshManager : MonoBehaviour
 
 
                 // Add points for the fillet curve itself
-                for (int j = 0; j <= config.curveSegments; j++) // Use config.curveSegments
+                for (int j = 0; j <= config.curveSegments; j++)
                 {
                     float t = (float)j / config.curveSegments;
                     if (j == 0 && splinePoints.Any() && Vector3.Distance(splinePoints.Last(), filletStart) < 0.001f) continue;
 
                     Vector3 interpolatedPoint = CalculateQuadraticBezier(filletStart, pCurrent, filletEnd, t);
-                    splinePoints.Add(ConformPointToGround(interpolatedPoint, config)); // Pass config
+                    splinePoints.Add(ConformPointToGround(interpolatedPoint, config));
                 }
 
                 // For the last segment of an open loop, ensure the very last control point is added as well.
                 if (!closedLoop && i == numControlPoints - 1 && Vector3.Distance(splinePoints.Last(), ConformPointToGround(pNext, config)) > 0.001f)
                 {
                      // Add the final straight segment after the last fillet.
-                    int straightSegments = Mathf.Max(1, config.curveSegments); // Use config.curveSegments
+                    int straightSegments = Mathf.Max(1, config.curveSegments);
                     for (int j = 1; j <= straightSegments; j++)
                     {
                         float t = (float)j / straightSegments;
@@ -614,7 +615,7 @@ public class LineMeshManager : MonoBehaviour
              // For closed loops with fillets, the last fillet's end needs to connect to the first fillet's start
             if (closedLoop && splinePoints.Any() && Vector3.Distance(splinePoints.Last(), splinePoints.First()) > 0.001f)
             {
-                int straightSegments = Mathf.Max(1, config.curveSegments); // Use config.curveSegments
+                int straightSegments = Mathf.Max(1, config.curveSegments);
                 for (int j = 1; j <= straightSegments; j++)
                 {
                     float t = (float)j / straightSegments;
@@ -623,7 +624,7 @@ public class LineMeshManager : MonoBehaviour
             }
 
             // If fillet amount is 0, it should behave like NoCurve (straight lines)
-            if (config.filletAmount < 0.001f && controlPoints.Count > 1) // Use config.filletAmount
+            if (config.filletAmount < 0.001f && controlPoints.Count > 1)
             {
                 splinePoints.Clear();
                 splinePoints.AddRange(controlPoints);
@@ -670,16 +671,16 @@ public class LineMeshManager : MonoBehaviour
     /// <summary>
     /// Helper method to conform a point to the ground layer with offset.
     /// </summary>
-    private Vector3 ConformPointToGround(Vector3 point, MeshConfiguration config) // Added config parameter
+    private Vector3 ConformPointToGround(Vector3 point, MeshConfiguration config)
     {
         // Raycast down to conform to groundLayer
         RaycastHit hit;
         Vector3 rayOrigin = new Vector3(point.x, Camera.main.transform.position.y + 100f, point.z);
         float raycastDistance = Camera.main.transform.position.y + 200f; // Sufficiently long ray
 
-        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastDistance, config.groundLayer)) // Use config.groundLayer
+        if (Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastDistance, config.groundLayer))
         {
-            point.y = hit.point.y + config.groundOffset; // Use config.groundOffset
+            point.y = hit.point.y + config.groundOffset;
         }
         else
         {
@@ -732,9 +733,9 @@ public class LineMeshManager : MonoBehaviour
         // Raycast centroid to ground for accurate Y position
         RaycastHit centroidHit;
         Vector3 rayOriginCentroid = new Vector3(centroid.x, Camera.main.transform.position.y + 100f, centroid.z);
-        if (Physics.Raycast(rayOriginCentroid, Vector3.down, out centroidHit, Camera.main.transform.position.y + 200f, config.groundLayer)) // Use config.groundLayer
+        if (Physics.Raycast(rayOriginCentroid, Vector3.down, out centroidHit, Camera.main.transform.position.y + 200f, config.groundLayer))
         {
-            centroid.y = centroidHit.point.y + config.groundOffset; // Use config.groundOffset
+            centroid.y = centroidHit.point.y + config.groundOffset;
         }
         else
         {
@@ -745,12 +746,12 @@ public class LineMeshManager : MonoBehaviour
         List<Vector3> innerSplinePoints = new List<Vector3>();
         foreach (Vector3 p in splineMeshPoints)
         {
-            Vector3 innerPoint = Vector3.Lerp(centroid, p, config.innerLoopScale); // Use config.innerLoopScale
+            Vector3 innerPoint = Vector3.Lerp(centroid, p, config.innerLoopScale);
             RaycastHit innerHit;
             Vector3 rayOriginInner = new Vector3(innerPoint.x, Camera.main.transform.position.y + 100f, innerPoint.z);
-            if (Physics.Raycast(rayOriginInner, Vector3.down, out innerHit, Camera.main.transform.position.y + 200f, config.groundLayer)) // Use config.groundLayer
+            if (Physics.Raycast(rayOriginInner, Vector3.down, out innerHit, Camera.main.transform.position.y + 200f, config.groundLayer))
             {
-                innerPoint.y = innerHit.point.y + config.groundOffset; // Use config.groundOffset
+                innerPoint.y = innerHit.point.y + config.groundOffset;
             }
             else
             {
@@ -763,12 +764,12 @@ public class LineMeshManager : MonoBehaviour
         List<Vector3> innermostSplinePoints = new List<Vector3>();
         foreach (Vector3 p in splineMeshPoints)
         {
-            Vector3 innermostPoint = Vector3.Lerp(centroid, p, config.innermostLoopScale); // Use config.innermostLoopScale
+            Vector3 innermostPoint = Vector3.Lerp(centroid, p, config.innermostLoopScale);
             RaycastHit innermostHit;
             Vector3 rayOriginInnermost = new Vector3(innermostPoint.x, Camera.main.transform.position.y + 100f, innermostPoint.z);
-            if (Physics.Raycast(rayOriginInnermost, Vector3.down, out innermostHit, Camera.main.transform.position.y + 200f, config.groundLayer)) // Use config.groundLayer
+            if (Physics.Raycast(rayOriginInnermost, Vector3.down, out innermostHit, Camera.main.transform.position.y + 200f, config.groundLayer))
             {
-                innermostPoint.y = innermostHit.point.y + config.groundOffset; // Use config.groundOffset
+                innermostPoint.y = innermostHit.point.y + config.groundOffset;
             }
             else
             {
@@ -782,19 +783,26 @@ public class LineMeshManager : MonoBehaviour
         MeshFilter newMeshFilter = finalizedMeshGameObject.AddComponent<MeshFilter>();
         MeshRenderer newMeshRenderer = finalizedMeshGameObject.AddComponent<MeshRenderer>();
         MeshCollider newMeshCollider = finalizedMeshGameObject.AddComponent<MeshCollider>();
-        newMeshCollider.convex = config.makeConvex; // Use config.makeConvex
+        newMeshCollider.convex = config.makeConvex;
 
         // Set the mesh GameObject's position to the centroid for easier manipulation
         finalizedMeshGameObject.transform.position = centroid;
 
-        // Set the layer of the generated mesh
-        int layerIndex = LayerMask.NameToLayer(config.generatedMeshLayerName); // Use config.generatedMeshLayerName
-        if (layerIndex == -1)
+        // FIX: Assigning the layer correctly.
+        // GameObject.layer expects a single layer index (0-31), not a bitmask.
+        // We iterate through the layers to find the first one that is set in the LayerMask.
+        int layerToAssign = 0; // Default to layer 0 if no layer is selected or if something goes wrong
+        for (int i = 0; i < 32; i++) // Unity supports up to 32 layers
         {
-            Debug.LogWarning($"Layer '{config.generatedMeshLayerName}' not found. Defaulting to layer 'Default' (0). Please check your Layer settings in Unity.");
-            layerIndex = 0;
+            // Check if the i-th bit is set in the LayerMask value
+            if (((1 << i) & config.generatedMeshLayer.value) != 0)
+            {
+                layerToAssign = i;
+                break; // Assign the first found layer and exit
+            }
         }
-        finalizedMeshGameObject.layer = layerIndex;
+        finalizedMeshGameObject.layer = layerToAssign;
+
 
         // Convert world-space spline points to local-space relative to the new GameObject's centroid
         Vector3[] localSplineVertices = new Vector3[splineMeshPoints.Count];
@@ -828,15 +836,15 @@ public class LineMeshManager : MonoBehaviour
         // Generate UVs for each loop
         for (int i = 0; i < localSplineVertices.Length; i++)
         {
-            uvs.Add(new Vector2((localSplineVertices[i].x - minBounds.x) / rangeX, (localSplineVertices[i].z - minBounds.z) / rangeZ)); // Corrected UV.y to use rangeZ
+            uvs.Add(new Vector2((localSplineVertices[i].x - minBounds.x) / rangeX, (localSplineVertices[i].z - minBounds.z) / rangeZ));
         }
         for (int i = 0; i < localInnerSplineVertices.Length; i++)
         {
-            uvs.Add(new Vector2((localInnerSplineVertices[i].x - minBounds.x) / rangeX, (localInnerSplineVertices[i].z - minBounds.z) / rangeZ)); // Corrected UV.y to use rangeZ
+            uvs.Add(new Vector2((localInnerSplineVertices[i].x - minBounds.x) / rangeX, (localInnerSplineVertices[i].z - minBounds.z) / rangeZ));
         }
         for (int i = 0; i < localInnermostSplineVertices.Length; i++)
         {
-            uvs.Add(new Vector2((localInnermostSplineVertices[i].x - minBounds.x) / rangeX, (localInnermostSplineVertices[i].z - minBounds.z) / rangeZ)); // Corrected UV.y to use rangeZ
+            uvs.Add(new Vector2((localInnermostSplineVertices[i].x - minBounds.x) / rangeX, (localInnermostSplineVertices[i].z - minBounds.z) / rangeZ));
         }
 
 
@@ -844,7 +852,7 @@ public class LineMeshManager : MonoBehaviour
         int numPointsPerLoop = splineMeshPoints.Count;
         int outerLoopStartIdx = 0;
         int innerLoopStartIdx = numPointsPerLoop;
-        int innermostLoopStartIdx = 2 * numPointsPerLoop; // Correctly 2x for three loops
+        int innermostLoopStartIdx = 2 * numPointsPerLoop;
 
         // Create triangles for the outer ring (outer spline to inner spline)
         for (int i = 0; i < numPointsPerLoop; i++)
@@ -855,8 +863,8 @@ public class LineMeshManager : MonoBehaviour
             int currentInner = innerLoopStartIdx + i;
             int nextInner = innerLoopStartIdx + (i + 1) % numPointsPerLoop;
 
-            AddTriangle(triangles, currentOuter, nextOuter, currentInner, config.invertMesh); // Use config.invertMesh
-            AddTriangle(triangles, nextOuter, nextInner, currentInner, config.invertMesh); // Use config.invertMesh
+            AddTriangle(triangles, currentOuter, nextOuter, currentInner, config.invertMesh);
+            AddTriangle(triangles, nextOuter, nextInner, currentInner, config.invertMesh);
         }
 
         // Create triangles for the middle ring (inner spline to innermost spline)
@@ -868,14 +876,14 @@ public class LineMeshManager : MonoBehaviour
             int currentInnermost = innermostLoopStartIdx + i;
             int nextInnermost = innermostLoopStartIdx + (i + 1) % numPointsPerLoop;
 
-            AddTriangle(triangles, currentInner, nextInner, currentInnermost, config.invertMesh); // Use config.invertMesh
-            AddTriangle(triangles, nextInner, nextInnermost, currentInnermost, config.invertMesh); // Use config.invertMesh
+            AddTriangle(triangles, currentInner, nextInner, currentInnermost, config.invertMesh);
+            AddTriangle(triangles, nextInner, nextInnermost, currentInnermost, config.invertMesh);
         }
 
         // Handle the innermost part of the mesh:
         // If innermostLoopScale is very small (collapses to centroid), connect innermost points to a central vertex.
         // Otherwise, create a fan of triangles from the first innermost point to fill the polygon.
-        if (config.innermostLoopScale <= 0.001f) // Effectively a centroid // Use config.innermostLoopScale
+        if (config.innermostLoopScale <= 0.001f) // Effectively a centroid
         {
             vertices.Add(Vector3.zero); // Add the centroid vertex (which is 0,0,0 in local space)
             uvs.Add(new Vector2((centroid.x - minBounds.x) / rangeX, (centroid.z - minBounds.z) / rangeZ)); // UV for centroid
@@ -885,7 +893,7 @@ public class LineMeshManager : MonoBehaviour
             {
                 int currentInnermost = innermostLoopStartIdx + i;
                 int nextInnermost = innermostLoopStartIdx + (i + 1) % numPointsPerLoop;
-                AddTriangle(triangles, currentInnermost, nextInnermost, centroidIdx, config.invertMesh); // Use config.invertMesh
+                AddTriangle(triangles, currentInnermost, nextInnermost, centroidIdx, config.invertMesh);
             }
         }
         else // Innermost loop still forms a polygon, fill it
@@ -894,7 +902,7 @@ public class LineMeshManager : MonoBehaviour
             // Create a fan of triangles from the first innermost point to fill the center polygon
             for (int i = 1; i < numPointsPerLoop - 1; i++)
             {
-                AddTriangle(triangles, firstInnermostPointIdx, innermostLoopStartIdx + i, innermostLoopStartIdx + i + 1, config.invertMesh); // Use config.invertMesh
+                AddTriangle(triangles, firstInnermostPointIdx, innermostLoopStartIdx + i, innermostLoopStartIdx + i + 1, config.invertMesh);
             }
         }
 
@@ -909,7 +917,7 @@ public class LineMeshManager : MonoBehaviour
         newMeshFilter.mesh = newGeneratedMesh;
         newMeshCollider.sharedMesh = newGeneratedMesh;
 
-        if (config.meshMaterial != null) // Use config.meshMaterial
+        if (config.meshMaterial != null)
         {
             newMeshRenderer.material = config.meshMaterial;
         }
@@ -920,18 +928,17 @@ public class LineMeshManager : MonoBehaviour
         }
 
         // Add other specified components (Rigidbody, custom scripts, etc.)
-        AddComponentsToMeshGameObject(finalizedMeshGameObject, config); // Pass config
+        AddComponentsToMeshGameObject(finalizedMeshGameObject, config);
 
-        // --- NEW: Fill the ENTIRE mesh with objects using the OUTER spline points ---
-        if (config.fillObjectPrefab != null && config.fillObjectSpacing > 0) // Use config.fillObjectPrefab and config.fillObjectSpacing
+        // Fill the ENTIRE mesh with objects using the OUTER spline points
+        if (config.fillObjectPrefab != null && config.fillObjectSpacing > 0)
         {
-            FillMeshWithObjects(finalizedMeshGameObject, splineMeshPoints, config); // Pass the outermost spline points and config
+            FillMeshWithObjects(finalizedMeshGameObject, splineMeshPoints, config);
         }
         else if (config.fillObjectPrefab != null && config.fillObjectSpacing <= 0)
         {
             Debug.LogWarning("Fill Object Prefab is assigned, but Fill Object Spacing is zero or negative. No objects will be filled.");
         }
-        // --- END NEW ---
 
         // The spawner's LineRenderer is now hidden, and its MeshRenderer is also hidden.
         // The new GameObject will display the mesh.
@@ -963,15 +970,15 @@ public class LineMeshManager : MonoBehaviour
     /// <summary>
     /// Copies specified components from the inspector list to the newly generated mesh GameObject.
     /// </summary>
-    private void AddComponentsToMeshGameObject(GameObject targetGameObject, MeshConfiguration config) // Added config parameter
+    private void AddComponentsToMeshGameObject(GameObject targetGameObject, MeshConfiguration config)
     {
-        if (config.componentsToCopy == null || config.componentsToCopy.Length == 0) // Use config.componentsToCopy
+        if (config.componentsToCopy == null || config.componentsToCopy.Length == 0)
         {
             Debug.Log("No additional components specified to add to " + targetGameObject.name);
             return;
         }
 
-        foreach (Component sourceComponent in config.componentsToCopy) // Use config.componentsToCopy
+        foreach (Component sourceComponent in config.componentsToCopy)
         {
             if (sourceComponent == null)
             {
@@ -990,6 +997,18 @@ public class LineMeshManager : MonoBehaviour
                     // Attempt to copy serializable fields using JsonUtility
                     string jsonData = JsonUtility.ToJson(sourceComponent);
                     JsonUtility.FromJsonOverwrite(jsonData, newComponent);
+
+                    // --- START OF FIX ---
+                    // If the component is a CropSpawner, ensure its spawning logic is triggered
+                    CropSpawner cropSpawner = newComponent as CropSpawner;
+                    if (cropSpawner != null)
+                    {
+                        // Call a method on CropSpawner to force it to re-evaluate its state and spawn crops.
+                        // This addresses the issue where Start() might not re-run or runs with old data
+                        // after JsonUtility.FromJsonOverwrite.
+                        cropSpawner.ForceSpawnCrops(); 
+                    }
+                    // --- END OF FIX ---
 
                     Debug.Log($"Added component '{componentType.Name}' to {targetGameObject.name} and attempted to copy its serializable data.");
                 }
@@ -1011,7 +1030,7 @@ public class LineMeshManager : MonoBehaviour
     /// </summary>
     /// <param name="parentMeshGameObject">The parent GameObject to contain the filled objects.</param>
     /// <param name="polygonPoints">The list of points defining the polygon to fill (these are expected to be in world space).</param>
-    private void FillMeshWithObjects(GameObject parentMeshGameObject, List<Vector3> polygonPoints, MeshConfiguration config) // Added config parameter
+    private void FillMeshWithObjects(GameObject parentMeshGameObject, List<Vector3> polygonPoints, MeshConfiguration config)
     {
         if (polygonPoints == null || polygonPoints.Count < 3)
         {
@@ -1019,7 +1038,7 @@ public class LineMeshManager : MonoBehaviour
             return;
         }
 
-        if (config.fillObjectPrefab == null) // Use config.fillObjectPrefab
+        if (config.fillObjectPrefab == null)
         {
             Debug.LogWarning("Fill Object Prefab is not assigned. Cannot fill mesh with objects.");
             return;
@@ -1040,9 +1059,9 @@ public class LineMeshManager : MonoBehaviour
         int count = 0;
         // Iterate through a grid covering the bounding box
         // Start slightly inside minX/minZ to ensure first point is covered by grid spacing
-        for (float x = minX; x <= maxX; x += config.fillObjectSpacing) // Use config.fillObjectSpacing
+        for (float x = minX; x <= maxX; x += config.fillObjectSpacing)
         {
-            for (float z = minZ; z <= maxZ; z += config.fillObjectSpacing) // Use config.fillObjectSpacing
+            for (float z = minZ; z <= maxZ; z += config.fillObjectSpacing)
             {
                 Vector3 testPoint = new Vector3(x, 0, z); // Y doesn't matter for 2D point-in-polygon test
 
@@ -1054,11 +1073,11 @@ public class LineMeshManager : MonoBehaviour
                     Vector3 rayOrigin = new Vector3(x, Camera.main.transform.position.y + 100f, z);
                     float raycastDistance = Camera.main.transform.position.y + 200f;
 
-                    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastDistance, config.groundLayer)) // Use config.groundLayer
+                    if (Physics.Raycast(rayOrigin, Vector3.down, out hit, raycastDistance, config.groundLayer))
                     {
-                        Vector3 spawnPosition = hit.point + Vector3.up * (config.groundOffset + config.fillOffset); // Apply fillOffset here // Use config.groundOffset and config.fillOffset
+                        Vector3 spawnPosition = hit.point + Vector3.up * (config.groundOffset + config.fillOffset);
                         // Set the parent directly to the generated mesh GameObject
-                        GameObject obj = Instantiate(config.fillObjectPrefab, spawnPosition, Quaternion.identity, parentMeshGameObject.transform); // Use config.fillObjectPrefab
+                        GameObject obj = Instantiate(config.fillObjectPrefab, spawnPosition, Quaternion.identity, parentMeshGameObject.transform);
                         count++;
                     }
                     else
@@ -1082,7 +1101,7 @@ public class LineMeshManager : MonoBehaviour
     /// <returns>True if the point is inside the polygon, false otherwise.</returns>
     private bool IsPointInPolygon(Vector3 testPoint, List<Vector3> polygonPoints)
     {
-        if (polygonPoints.Count < 3) return false; // A polygon needs at least 3 vertices
+        if (polygonPoints.Count < 3) return false;
 
         int crossings = 0;
         int numPoints = polygonPoints.Count;
